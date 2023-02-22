@@ -1,5 +1,6 @@
 
-Meta-classifier free negative sampling for extreme multilabel classification
+Meta-classifier free negative sampling for extreme multilabel classification.
+
 The code is adapted from the source codes of LightXML [1].
 
 ## Requirements
