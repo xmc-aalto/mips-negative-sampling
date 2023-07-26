@@ -125,16 +125,12 @@ def train(model, df, label_map):
 def get_exp_name():
     name = [args.dataset, '' if args.bert == 'bert-base' else args.bert]
     name.append(args.model_type)
-    if args.model_type.startswith('ivfflat') or args.model_type.startswith('exact'):
+    if args.model_type=='mips':
         name.extend(['num-neg-mips', str(args.num_neg_mips)])
         name.extend(['step', str(args.mips_preprocess_step)])
-        if args.model_type.startswith('ivfflat'):
-            name.extend(['nlist', str(args.nlist)])
-            name.extend(['nprobe', str(args.nprobe_train)])
-            name.extend(['automatic-search' if args.automatic_search else 'manual-search'])
+        name.extend(['nlist', str(args.nlist)])
+        name.extend(['nprobe', str(args.nprobe_train)])
         name.extend(['eth', str(args.eth_in_epoch)])
-    # name.append(args.eval_type)
-    # if args.dataset in ['wiki500k', 'amazon670k']:
     if args.model_type=='light': # mohamm
         name.append('t'+str(args.group_y_group))
 
@@ -194,6 +190,8 @@ parser.add_argument('--eth_in_epoch', default=0, type=int,
                     help='the epoch at which in-epoch-prop starts (before this epoch, only prop is used)')
 parser.add_argument('--nlist', default=818, type=int,
                     help='the nlist parameter in faiss')
+parser.add_argument('--ivf_cpu', action='store_true',
+                    help='if the vectors of ivfflat be stored on cpu')
 parser.add_argument('--nprobe_train', default=64, type=int,
                     help='the nprobe parameter in faiss for training')
 parser.add_argument('--nprobe_eval', default=350, type=int,
@@ -247,7 +245,7 @@ if __name__ == '__main__':
                          eval_type=args.eval_type, inv_prop=inv_prop, num_neg_mips=args.num_neg_mips,
                          mips_preprocess_step=args.mips_preprocess_step, mips_preprocess_epoch=args.mips_preprocess_epoch,
                          eth_in_epoch=args.eth_in_epoch, nlist=args.nlist, nprobe_train=args.nprobe_train,
-                         nprobe_eval=args.nprobe_eval)
+                         nprobe_eval=args.nprobe_eval, ivf_cpu=args.ivf_cpu)
 
     if args.eval_model and args.model_type=='light':
         print(f'load models/model-{get_exp_name()}.bin')

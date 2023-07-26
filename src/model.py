@@ -39,7 +39,7 @@ class LightXML(nn.Module):
                  use_swa=True, swa_warmup_epoch=10, swa_update_step=200, hidden_dim=300,
                  model_type='light', eval_type='original', inv_prop=None,
                  num_neg_mips=5, mips_preprocess_step=50, mips_preprocess_epoch=1,
-                 eth_in_epoch=0, nlist=8, nprobe_train=8, nprobe_eval=8):
+                 eth_in_epoch=0, nlist=8, nprobe_train=8, nprobe_eval=8, ivf_cpu=False):
         super(LightXML, self).__init__()
 
         self.use_swa = use_swa
@@ -56,7 +56,8 @@ class LightXML(nn.Module):
         self.eval_type = eval_type
         self.n_labels = n_labels
         self.inv_prop = inv_prop
-        self.num_neg_mips = num_neg_mips if num_neg_mips<2048 else 2048
+        self.num_neg_mips = num_neg_mips
+        # self.num_neg_mips = num_neg_mips if num_neg_mips<2048 else 2048
         self.mips_preprocess_step = mips_preprocess_step
         self.mips_preprocess_epoch = mips_preprocess_epoch
         self.mips_wrap = None
@@ -64,6 +65,7 @@ class LightXML(nn.Module):
         self.nprobe_train = nprobe_train
         self.nprobe_eval = nprobe_eval
         self.nlist = nlist
+        self.ivf_cpu = ivf_cpu
         self.res = faiss.StandardGpuResources()
 
         print('swa', self.use_swa, self.swa_warmup_epoch, self.swa_update_step, self.swa_state)
@@ -339,8 +341,11 @@ class LightXML(nn.Module):
         if epoch_idx >= self.eth_in_epoch:
             emb = emb.detach()
 
-            _, top_mips = self.mips_wrap.search(emb.type(torch.float32), self.num_neg_mips)
-                
+            if self.ivf_cpu:
+                _, top_mips = self.mips_wrap.search(emb.cpu().type(torch.float32), self.num_neg_mips)
+                top_mips = top_mips.cuda()
+            else:
+                _, top_mips = self.mips_wrap.search(emb.type(torch.float32), self.num_neg_mips)                
             
             batch_size = emb.shape[0]
             lbl_one_hot = torch.zeros((batch_size, self.candidates_num), device='cuda')
@@ -394,11 +399,12 @@ class LightXML(nn.Module):
         params = self.embed.weight.detach().clone()
         nlist = self.nlist
         d = params.shape[1]
-        quantizer = faiss.IndexFlatIP(d)
-        index = faiss.IndexIVFFlat(quantizer, d, nlist)
-        index = faiss.index_cpu_to_gpu(self.res, 0, index)
-        index.train(params/256)
-        index.add(params/256)
+        quantizer = faiss.IndexFlat(d, 0)
+        index = faiss.IndexIVFFlat(quantizer, d, nlist, 0)
+        if not self.ivf_cpu:
+            index = faiss.index_cpu_to_gpu(self.res, 0, index)
+        index.train(params)
+        index.add(params)
         index.nprobe = self.nprobe_train if mode=='train' else self.nprobe_eval
 
         return index
@@ -412,8 +418,7 @@ class LightXML(nn.Module):
         den_psp = np.zeros(5)
         p1, p3, p5 = 0, 0, 0
         g_p1, g_p3, g_p5 = 0, 0, 0
-        total, acc1, acc3, acc5 = 0, 0, 0, 0
-        g_acc1, g_acc3, g_acc5 = 0, 0, 0
+        total = 0
         train_loss = 0
 
         if mode == 'train':
